@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>USDA Organic Integrity — Ingredient Search</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #f5f5f0; color: #222; min-height: 100vh; }
+
+  header { background: #2d5a1b; color: white; padding: 20px 24px; }
+  header h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
+  header p { font-size: 0.85rem; opacity: 0.8; }
+
+  .search-bar { background: white; padding: 20px 24px; border-bottom: 1px solid #ddd;
+                display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .search-bar input { flex: 1; min-width: 200px; padding: 10px 14px;
+                      font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; }
+  .search-bar input:focus { outline: 2px solid #2d5a1b; border-color: transparent; }
+  .search-bar button { padding: 10px 20px; background: #2d5a1b; color: white;
+                       border: none; border-radius: 6px; font-size: 1rem;
+                       cursor: pointer; white-space: nowrap; }
+  .search-bar button:hover { background: #3a7224; }
+
+  .status-bar { padding: 8px 24px; font-size: 0.8rem; color: #666;
+                background: #fffbf0; border-bottom: 1px solid #e8e0c0; }
+
+  main { padding: 20px 24px; max-width: 1200px; }
+
+  .hint { color: #888; font-size: 0.9rem; margin: 24px 0; text-align: center; }
+
+  .result-count { font-size: 0.9rem; color: #555; margin-bottom: 12px; }
+
+  table { width: 100%; border-collapse: collapse; background: white;
+          border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  th { background: #2d5a1b; color: white; text-align: left;
+       padding: 10px 14px; font-size: 0.82rem; font-weight: 600; }
+  td { padding: 10px 14px; font-size: 0.85rem; border-bottom: 1px solid #eee;
+       vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f9fdf7; }
+
+  td.products { font-size: 0.78rem; color: #444; max-width: 420px; }
+  td.products mark { background: #fff3a3; border-radius: 2px; padding: 0 2px; }
+  td a { color: #2d5a1b; text-decoration: none; font-weight: 500; }
+  td a:hover { text-decoration: underline; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px;
+           font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+  .badge-certified { background: #d4edda; color: #155724; }
+  .badge-surrendered { background: #ffeeba; color: #856404; }
+  .badge-suspended { background: #f8d7da; color: #721c24; }
+  .badge-revoked { background: #f5c6cb; color: #721c24; }
+
+  .no-data { background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;
+             padding: 20px 24px; margin-top: 20px; }
+  .no-data h3 { color: #856404; margin-bottom: 8px; }
+  .no-data code { background: #ffe; padding: 2px 6px; border-radius: 3px;
+                  font-family: monospace; }
+
+  .spinner { display: none; border: 3px solid #eee; border-top-color: #2d5a1b;
+             border-radius: 50%; width: 24px; height: 24px; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner.show { display: inline-block; }
+
+  @media (max-width: 640px) {
+    th:nth-child(4), td:nth-child(4),
+    th:nth-child(5), td:nth-child(5) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>USDA Organic Integrity — Ingredient Search</h1>
+  <p>Find certified organic operations by ingredient or product name</p>
+</header>
+
+<div class="search-bar">
+  <input type="text" id="q" placeholder='e.g. "neem oil", "copper sulfate", "kelp"'
+         autocomplete="off" spellcheck="false">
+  <button onclick="doSearch()">Search</button>
+  <div class="spinner" id="spinner"></div>
+</div>
+
+<div class="status-bar" id="status-bar">Loading database info…</div>
+
+<main>
+  <div id="results"></div>
+</main>
+
+<script>
+const qEl = document.getElementById('q');
+const spinner = document.getElementById('spinner');
+const statusBar = document.getElementById('status-bar');
+const resultsEl = document.getElementById('results');
+
+// Load stats
+fetch('/api/stats').then(r => r.json()).then(s => {
+  if (s.total_operations === 0) {
+    statusBar.innerHTML = '⚠️ No data loaded — run <code>python ingest.py</code> to index the database.';
+    resultsEl.innerHTML = `<div class="no-data">
+      <h3>Database not yet populated</h3>
+      <p>Run the following command in your terminal to download and index the USDA data (one-time, ~2 minutes):</p>
+      <p style="margin-top:10px"><code>python ingest.py</code></p>
+      <p style="margin-top:10px; font-size:0.85rem; color:#666">This downloads the latest monthly snapshot (~36 MB) and builds a local search index.</p>
+    </div>`;
+  } else {
+    statusBar.textContent = `${s.total_operations.toLocaleString()} operations indexed · data as of ${s.data_date} · updated ${s.loaded_at.slice(0,10)}`;
+  }
+}).catch(() => { statusBar.textContent = 'Could not reach server.'; });
+
+// Search on Enter
+qEl.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+function badgeClass(status) {
+  const s = (status || '').toLowerCase();
+  if (s.includes('certified')) return 'badge-certified';
+  if (s.includes('surrender')) return 'badge-surrendered';
+  if (s.includes('suspend')) return 'badge-suspended';
+  if (s.includes('revok')) return 'badge-revoked';
+  return '';
+}
+
+async function doSearch() {
+  const q = qEl.value.trim();
+  if (!q) return;
+
+  spinner.classList.add('show');
+  resultsEl.innerHTML = '';
+
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=500`);
+    const data = await res.json();
+
+    spinner.classList.remove('show');
+
+    if (data.count === 0) {
+      resultsEl.innerHTML = `<p class="hint">No operations found with products matching <strong>${escHtml(q)}</strong>.</p>`;
+      return;
+    }
+
+    const capped = data.count >= 500 ? ' (showing first 500)' : '';
+    let html = `<p class="result-count">${data.count.toLocaleString()} operation${data.count!==1?'s':''} found${capped}</p>`;
+    html += `<table>
+      <thead><tr>
+        <th>Operation</th>
+        <th>Status</th>
+        <th>State / Country</th>
+        <th>Certifier</th>
+        <th>Matched Products</th>
+      </tr></thead><tbody>`;
+
+    for (const r of data.results) {
+      const loc = [r.state, r.country].filter(Boolean).join(', ') || '—';
+      const link = r.cert_url
+        ? `<a href="${escHtml(r.cert_url)}" target="_blank" rel="noopener">${escHtml(r.name)}</a>`
+        : escHtml(r.name);
+      const badge = `<span class="badge ${badgeClass(r.status)}">${escHtml(r.status || '—')}</span>`;
+      html += `<tr>
+        <td>${link}</td>
+        <td>${badge}</td>
+        <td>${escHtml(loc)}</td>
+        <td>${escHtml(r.certifier || '—')}</td>
+        <td class="products">${r.snippet || ''}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table>';
+    resultsEl.innerHTML = html;
+
+  } catch (err) {
+    spinner.classList.remove('show');
+    resultsEl.innerHTML = `<p class="hint">Search failed: ${err.message}</p>`;
+  }
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Auto-search if ?q= param present
+const urlQ = new URLSearchParams(location.search).get('q');
+if (urlQ) { qEl.value = urlQ; doSearch(); }
+else { resultsEl.innerHTML = '<p class="hint">Type an ingredient name above and press Search or Enter.</p>'; }
+</script>
+</body>
+</html>
