@@ -7,7 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
+EXPOSE 7860
 
-# Ingest data then start server
-CMD ["sh", "-c", "python ingest.py && python app.py"]
+ENV PORT=7860
+
+CMD ["python", "app.py"]

@@ -1,3 +1,13 @@
+---
+title: USDA Organic Integrity Ingredient Search
+emoji: 🌿
+colorFrom: green
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # USDA Organic Integrity — Ingredient Search
 
 Search all 50,000+ USDA-certified organic operations by ingredient or product name. Data comes from the USDA's own monthly Excel snapshots — no scraping required.
