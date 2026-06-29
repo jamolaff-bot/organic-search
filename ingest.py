@@ -56,17 +56,10 @@ def download(url: str, dest: Path) -> None:
     print(f"  Saved to {dest} ({size_mb:.1f} MB)")
 
 
-def extract_cert_url(formula_or_url: str | None) -> str:
-    """Pull the URL out of an Excel HYPERLINK formula or return as-is."""
-    if not formula_or_url:
-        return ""
-    s = str(formula_or_url)
-    m = re.search(r'HYPERLINK\("([^"]+)"', s)
-    if m:
-        return m.group(1)
-    if s.startswith("http"):
-        return s
-    return ""
+def build_op_url(nop_id: str) -> str:
+    """Build a direct operation profile URL using the NOP ID."""
+    return (f"https://organic.ams.usda.gov/integrity/CP/OPP"
+            f"?nopid={nop_id}&ret=Home&retName=Home")
 
 
 def combine_products(row: dict) -> str:
@@ -104,14 +97,7 @@ def parse_xlsx(path: Path) -> tuple[list[dict], str]:
         if not nop_id or nop_id == "None":
             continue
 
-        # Determine operation URL from certificate field
-        cert_formula = get(raw, "op_certificate")
-        cert_url = extract_cert_url(cert_formula)
-
-        # Fallback: build URL from nop_id (certifier ID is first 3 digits)
-        if not cert_url and len(nop_id) >= 3:
-            cid = nop_id[:3].lstrip("0") or "0"
-            cert_url = f"https://organic.ams.usda.gov/integrity/CP/OPP?cid={cid}&nopid={nop_id}"
+        cert_url = build_op_url(nop_id)
 
         # State: prefer physical, fall back to mailing
         state = (get(raw, "opPA_state") or get(raw, "opMA_state") or "").strip()
